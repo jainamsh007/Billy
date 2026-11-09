@@ -1,140 +1,132 @@
-<p align="center">
-  <a href="https://trybilly.tech">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
-      <img src="docs/logo-light.png" alt="billy" height="48">
-    </picture>
-  </a>
-</p>
+# Skills
 
-<h1 align="center">Invoicing that feels like typing a document</h1>
+Agent skills for the four-beat SDLC. These files are the source of truth.
+`.claude/skills/<name>` symlinks to each folder here so agent harnesses
+discover them.
 
-<p align="center">
-  A free, open-source invoice editor. Click any line and write, then download a print-ready PDF.<br>
-  No account, no server, and your invoice never leaves your browser.
-</p>
+The four-beat workflow they implement is described in `AGENTS.md` at the repo
+root.
 
-<p align="center">
-  <a href="https://trybilly.tech"><b>Try it at trybilly.tech</b></a> ·
-  <a href="#features">Features</a> ·
-  <a href="#run-it-locally">Run it locally</a> ·
-  <a href="#contributing">Contributing</a>
-</p>
+## What we adopted, and what we changed
 
-<p align="center">
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-0070d7"></a>
-</p>
+Most of these come from
+[michaelshimeles/skills](https://github.com/michaelshimeles/skills), the
+collection from the "software factory" walkthrough. We took five of the seven,
+changed three of them, and wrote two of our own.
 
-## Why billy
+| Skill | Source | Status |
+|---|---|---|
+| `deep-review` | ours, plus the spec axis and smell baseline from mattpocock `code-review` | Replaces the stock `code-review` plugin |
+| `ship-pr` | this kit, shaped after `greploop` | Same loop, pointed at this reviewer |
+| `before-and-after` | vercel-labs, via michaelshimeles | Adopted, changed |
+| `evidence-driven-testing` | michaelshimeles | Adopted, rewritten around the headless path |
+| `new-feature` | michaelshimeles | Adopted, reduced |
+| `code-structure` | michaelshimeles | Adopted as-is |
+| `unslop` | cursor/plugins, via michaelshimeles | Adopted as-is |
+| `triage` | mattpocock | Adopted, tracker config inlined as a GitHub label table |
+| `improve-codebase-architecture` | mattpocock | Adopted as-is |
+| `diagnosing-bugs` | mattpocock | Adopted as-is |
+| `codebase-design`, `grilling`, `domain-modeling` | mattpocock | Adopted as-is. Dependencies of the three above |
+| `greploop` | greptileai | **Not adopted.** Needs Greptile installed on the repo |
+| `greploop-apps` | michaelshimeles | **Not adopted.** Same reason |
 
-- **You edit the invoice itself.** There are no forms or dialogs. Click the company name, a line item or the due date and type.
-- **The PDF matches the screen.** The editor, the preview and the export all render the same page, so what you see is what you download.
-- **Nothing to sign up for, nothing uploaded.** There are no accounts, no backend and no database. Your draft is saved in your browser's local storage.
+### deep-review
 
-## Features
+The reason this exists. The stock `code-review@claude-code-plugins` plugin has
+two properties that made the bot look weak here:
 
-**Editing**
-- Click-to-edit fields right on the document, with autosave to your browser
-- Undo and redo, a <kbd>⌘K</kbd> command palette and keyboard shortcuts
-- Multi-page invoices
-- An editor that works on a phone
+- It stops as soon as it finds it has already commented on a PR, so it never
+  re-reviews a push.
+- By design it flags only compile errors, definite logic errors and CLAUDE.md
+  violations, and explicitly declines to flag security, performance or quality.
+  That is a deliberate high-precision choice, and it is much narrower than what
+  CodeRabbit and Greptile report.
 
-**Look**
-- Ten templates: Clean, Modern Green, Minimal Teal, Corporate Blue, Mono Classic, Mono Elegant, Studio, Ledger, Receipt and Letterhead
-- An extra Early Bird template for the people who joined the waitlist
-- Logo and digital stamp upload
+Ours reviews on every invocation and scores against six groups: correctness,
+tenant isolation, security and data handling, performance, repo conventions, and
+tests. Group B is the one that matters most: your project's own invariants, which no
+generic reviewer can infer. It ships empty with a worked example. Fill it in. Every finding is
+verified by a second agent whose job is to disprove it before it gets posted, so
+the extra breadth does not turn into noise.
 
-**Money**
-- Ten currencies: INR, USD, EUR, GBP, JPY, AUD, CAD, SGD, AED and SAR
-- Tax and discount, payment terms (on receipt, Net 7, 15 or 30), bank details, PO numbers, notes and terms
+Output is kept short on purpose, and it is written for two readers. It opens
+with an "In short" line of one or two plain sentences, no file paths and no
+jargon, so a partner can tell from three lines whether the work is safe to ship.
+The technical detail sits underneath: each finding is scored 0 to 100 internally
+and anything under 80 is dropped, so a review lands at 0 to 5 findings tagged P0
+to P3, each stating the problem, the impact and the fix in under 100 words. It
+ends with a verdict line, `Looks good`, `Changes requested` or `Blocking issues`,
+which is what `ship-pr` loops on. The format follows
+[rdeepak-711/claude-code-skills](https://github.com/rdeepak-711/claude-code-skills/blob/main/skills/deep-review/SKILL.md);
+the rubric it applies is ours.
 
-**Made for India as well**
-- GSTIN, HSN and SAC codes, CGST, SGST and IGST lines, and reverse charge
-- Quick presets for freelancers, GST vendors, agencies and consultants that switch on the fields each one needs
+### ship-pr
 
-**Export**
-- A print-ready PDF generated in the browser
+`greploop` is a good loop wrapped around a service we do not pay for. We kept the
+loop and pointed it at this kit's reviewer: open the PR with proof, run the
+review, read the verdict, go back and build if it is below 5, push, get a fresh
+verdict.
 
-## How it works
+### before-and-after
 
-```
-browser: /  (landing)   and   /editor  →  InvoicePage  →  localStorage
-                                              │
-                          canvas, preview and PDF all render this one page
-```
+Two changes from upstream.
 
-- `apps/web/components/invoice/invoice-page.tsx` is the single layout used for the canvas, the preview and the PDF, so the three cannot drift apart.
-- The PDF is made in the browser from that same page (`html-to-image` and `jsPDF`).
-- `packages/invoice-core` holds the pure TypeScript domain: types, totals, templates, themes, currencies and presets. It has no React in it and it is the only part with unit tests.
-- The site is a Next.js static export. There are no route handlers, server actions or middleware.
+The default upload adapter was `0x0.st`, a public paste host with no auth and no
+delete, which is wrong for anything showing customer data. The default is now
+the gist adapter, which creates a secret unlisted gist (not access-controlled:
+anyone with the URL can read it). The one-line change is in
+`scripts/upload-and-copy.sh`.
 
-## Run it locally
+The skill also carries the rule about capturing only seeded test data, and adds
+`publish-captures.sh`, which attaches captures to a PR as an artifact instead of
+committing them.
 
-You need [Bun](https://bun.sh) (the version is pinned in `packageManager` in `package.json`).
+### evidence-driven-testing
 
-```bash
-bun install        # install every workspace
-bun run dev        # start the app on http://localhost:3000
-bun run build      # static production build into apps/web/out
-bun run lint       # lint
-```
+Upstream leads with a screen recorder. It needs ffmpeg built with `libx264` and
+the `ass` filter, plus macOS Screen Recording permission that a human has to
+grant. Ours leads with headless Playwright and curl probes, which work without
+setup, and treats the recording as the option you check for rather than assume.
 
-Checks for the domain package:
+### triage, improve-codebase-architecture, diagnosing-bugs
 
-```bash
-cd packages/invoice-core
-bun test           # unit tests
-bunx tsc --noEmit  # typecheck
-```
+From [mattpocock/skills](https://github.com/mattpocock/skills).
 
-## Project layout
+- `/triage` turns a vague issue into an **agent brief**: verified, with
+  acceptance criteria and scope. `new-feature` hands off to it when an issue
+  needs more than a few questions, and `deep-review` checks PRs against the
+  brief.
+- `/improve-codebase-architecture` finds where the code structure hurts, draws
+  it as an HTML report with before/after diagrams, then works through the fix
+  you pick with you.
+- `/diagnosing-bugs` refuses to guess: build a command that reproduces the bug,
+  shrink it, rank hypotheses, then fix with a regression test.
 
-A [Turborepo](https://turborepo.com) on Bun workspaces:
+They call `grilling`, `domain-modeling` and `codebase-design`, so those come
+too. The only change is in `triage`: upstream reads the tracker and label
+mapping from a separate setup skill; here it is a table in the skill that
+`/setup-sdlc` fills in.
 
-```
-billy/
-├─ apps/
-│  └─ web/                 # the Next.js app: landing page, editor and early birds wall
-│     ├─ app/              #   routes: /, /editor, /early-birds
-│     ├─ components/       #   invoice/ (editor), landing/, founders/, ui/, icons/
-│     └─ lib/              #   PDF export, storage, early bird helpers
-├─ packages/
-│  ├─ invoice-core/        # @billy/invoice-core: types, totals, templates, currencies, presets
-│  ├─ design/              # @billy/design: design tokens
-│  └─ typescript-config/   # shared tsconfig base
-├─ scripts/founders/       # launch-day CLIs for early bird numbers and unlock links
-├─ docs/                   # project documentation
-├─ DESIGN.md               # the design spec of record
-├─ wrangler.jsonc          # Cloudflare Worker config: serves the site on trybilly.tech
-└─ vercel.json              # Vercel build settings and security headers
-```
+### new-feature
 
-## Deployment
+Clarifies the issue with the user before branching when it is unclear.
+Upstream's worktree mechanics are dropped. Most agent harnesses manage worktrees
+themselves. What was worth keeping is the sync, the scope check against open
+PRs, and the warnings about what a branch does *not* isolate: shared databases,
+dev server ports, lockfiles and build output.
 
-The app is a static export (`output: 'export'` in `apps/web/next.config.ts`), deployed on [Cloudflare Workers](https://workers.cloudflare.com) from `main`. `wrangler.jsonc` routes `trybilly.tech` and `www.trybilly.tech` to the `billy` Worker, which serves `apps/web/out`; Cloudflare Workers Builds builds and deploys every push to `main`. [Vercel](https://vercel.com) still builds preview deployments for pull requests, with `vercel.json` holding those settings. DNS is on Cloudflare.
+## Licenses
 
-- **Install command:** `bun install`
-- **Build command:** `bun run build`
-- **Output directory:** `apps/web/out`
-- **Environment:** `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` for analytics. It is read at build time, and analytics stay off without it.
+`before-and-after` carries PolyForm Shield 1.0.0 from vercel-labs, included in
+its folder. `unslop` and `code-structure` are MIT. The mattpocock skills are
+MIT, licence in each folder.
 
-Production security headers come from `apps/web/public/_headers`, which Cloudflare reads when serving the export; `vercel.json` keeps the same set on previews. Deploy steps, the apex redirect and rollback live in [`docs/deploy.md`](docs/deploy.md).
+## One conflict worth knowing
 
-## Contributing
+`unslop` pattern 13 bans em dashes and also rules out parentheses as a
+substitute. The standing rule for this repo permits parentheses: replace a dash
+with a comma, colon, parentheses or a period, and use `،` and `؛` in Arabic.
 
-Contributions are welcome. billy is small, so the process is light. The short version is below, and [`CONTRIBUTING.md`](CONTRIBUTING.md) has the rest.
-
-- Open an issue first for anything bigger than a small fix, so we can agree on the approach before you write code. Typos and obvious bugs can go straight to a pull request.
-- Branch from `main` and keep each pull request to one change.
-- Before you push, check that `bun run build` passes and that `bun run lint` reports nothing new.
-- For anything visible, include before and after screenshots at desktop and phone widths.
-- Match the code around your change. The UI follows [`DESIGN.md`](DESIGN.md), and user-facing copy uses plain punctuation, so no em-dashes.
-- Using an AI coding agent? Read [`AGENTS.md`](AGENTS.md) first.
-
-By contributing, you agree that your work is licensed under the MIT license.
-
-If billy saves you time, a star on GitHub helps other people find it.
-
-## License
-
-[MIT](LICENSE). Bundled third-party files keep their own licenses, listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+**The repo rule wins.** Parentheses are fine. What is not fine is an em dash or
+an en dash in anything a user sees. Everything else in `unslop` applies as
+written.
