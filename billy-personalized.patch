@@ -1,0 +1,411 @@
+diff --git a/apps/web/app/globals.css b/apps/web/app/globals.css
+index 921b3b6..c4f0028 100644
+--- a/apps/web/app/globals.css
++++ b/apps/web/app/globals.css
+@@ -360,9 +360,23 @@
+ /* Bank details print on one line separated by dots (read-only), so a filled
+    footer stays short enough for a typical invoice to fit one page. */
+ .footer-bank > * + *::before {
+-  content: "·";
+-  margin-right: 0.75rem;
+-  color: var(--invoice-subtle);
++  content: none;
++}
++/* Payment block + CTA ride inside the footer so every template (including
++   the coloured corporate-blue band) styles them like the rest of the footer. */
++.footer-cta p,
++.footer-cta .footer-value {
++  text-align: center;
++}
++.invoice-canvas[data-template="corporate-blue"] .payment-terms,
++.invoice-canvas[data-template="corporate-blue"] .footer-cta {
++  border-color: rgba(255,255,255,0.35);
++}
++.invoice-canvas[data-template="corporate-blue"] .footer-bank p {
++  color: rgba(255,255,255,0.7) !important;
++}
++.invoice-canvas[data-template="corporate-blue"] .footer-bank .footer-value {
++  color: white !important;
+ }
+ 
+ /* Footer bands assume they sit at the bottom of the sheet. Once an invoice
+diff --git a/apps/web/components/invoice/footer-section.tsx b/apps/web/components/invoice/footer-section.tsx
+index 9d562f4..d276213 100644
+--- a/apps/web/components/invoice/footer-section.tsx
++++ b/apps/web/components/invoice/footer-section.tsx
+@@ -5,24 +5,44 @@ import * as React from "react"
+ import { EditableText } from "@/components/invoice/editable-text"
+ import { StampUpload } from "@/components/invoice/stamp-upload"
+ import { useInvoiceDispatch, useInvoiceState } from "@/components/invoice/invoice-context"
++import type { InvoiceData } from "@billy/invoice-core"
++
++const LABEL_CLASS =
++  "footer-label text-xs font-semibold uppercase tracking-[0.25em] text-[var(--invoice-subtle)]"
++
++type BankField =
++  | "bankAccountName"
++  | "bankName"
++  | "bankAccountType"
++  | "bankAccount"
++  | "bankIfsc"
++  | "bankPhone"
++
++const BANK_FIELDS: { field: BankField; label: string; placeholder: string }[] = [
++  { field: "bankAccountName", label: "Account Name", placeholder: "Account holder name" },
++  { field: "bankName", label: "Bank", placeholder: "Bank name" },
++  { field: "bankAccountType", label: "Account Type", placeholder: "Savings / Current" },
++  { field: "bankAccount", label: "Account Number", placeholder: "Account number" },
++  { field: "bankIfsc", label: "IFSC Code", placeholder: "IFSC code" },
++  { field: "bankPhone", label: "Phone Number", placeholder: "Phone number" },
++]
+ 
+ export function FooterSection() {
+   const state = useInvoiceState()
+   const dispatch = useInvoiceDispatch()
+ 
++  const update = (field: keyof InvoiceData, value: string) =>
++    dispatch({ type: "UPDATE_FIELD", field, value })
++
+   return (
+-    <section data-break-block className="footer-section space-y-4 border-t border-[var(--invoice-border)] pt-5">
++    <section data-break-block className="footer-section space-y-5 border-t border-[var(--invoice-border)] pt-5">
+       <div className="grid gap-6 md:grid-cols-2">
+         <div className="footer-info space-y-3">
+           <div className="footer-item space-y-2">
+-            <p className="footer-label text-xs font-semibold uppercase tracking-[0.25em] text-[var(--invoice-subtle)]">
+-              Notes
+-            </p>
++            <p className={LABEL_CLASS}>Notes</p>
+             <EditableText
+               value={state.notes}
+-              onCommit={(value) =>
+-                dispatch({ type: "UPDATE_FIELD", field: "notes", value })
+-              }
++              onCommit={(value) => update("notes", value)}
+               placeholder="Add a note or thank you message"
+               ariaLabel="Notes"
+               multiline
+@@ -30,52 +50,6 @@ export function FooterSection() {
+               className="footer-value text-sm text-[var(--invoice-muted)]"
+             />
+           </div>
+-          <div className="footer-item space-y-2">
+-            <p className="footer-label text-xs font-semibold uppercase tracking-[0.25em] text-[var(--invoice-subtle)]">
+-              Payment Terms
+-            </p>
+-            <EditableText
+-              value={state.paymentTerms}
+-              onCommit={(value) =>
+-                dispatch({ type: "UPDATE_FIELD", field: "paymentTerms", value })
+-              }
+-              placeholder="Payment terms"
+-              className="footer-value text-sm text-[var(--invoice-muted)]"
+-            />
+-          </div>
+-          {state.options.showBankDetails && (
+-            <div className="footer-item space-y-2">
+-              <p className="footer-label text-xs font-semibold uppercase tracking-[0.25em] text-[var(--invoice-subtle)]">
+-                Bank Details
+-              </p>
+-              <div className="footer-bank flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-[var(--invoice-muted)]">
+-                <EditableText
+-                  value={state.bankName}
+-                  onCommit={(value) =>
+-                    dispatch({ type: "UPDATE_FIELD", field: "bankName", value })
+-                  }
+-                  placeholder="Bank name"
+-                  className="text-sm"
+-                />
+-                <EditableText
+-                  value={state.bankAccount}
+-                  onCommit={(value) =>
+-                    dispatch({ type: "UPDATE_FIELD", field: "bankAccount", value })
+-                  }
+-                  placeholder="Account number"
+-                  className="text-sm"
+-                />
+-                <EditableText
+-                  value={state.bankIfsc}
+-                  onCommit={(value) =>
+-                    dispatch({ type: "UPDATE_FIELD", field: "bankIfsc", value })
+-                  }
+-                  placeholder="IFSC code"
+-                  className="text-sm"
+-                />
+-              </div>
+-            </div>
+-          )}
+         </div>
+         <div className="footer-stamp flex flex-col items-end justify-end gap-3">
+           {state.options.showDigitalStamp && (
+@@ -93,6 +67,59 @@ export function FooterSection() {
+           )}
+         </div>
+       </div>
++
++      <div className="payment-terms space-y-3 border-t border-[var(--invoice-border)] pt-4">
++        <div className="footer-item space-y-2">
++          <p className={LABEL_CLASS}>Payment Terms</p>
++          <EditableText
++            value={state.paymentTerms}
++            onCommit={(value) => update("paymentTerms", value)}
++            placeholder="Payment terms"
++            ariaLabel="Payment terms"
++            multiline
++            rows={3}
++            className="footer-value text-sm text-[var(--invoice-muted)]"
++          />
++        </div>
++        {state.options.showBankDetails && (
++          <div className="footer-item space-y-2">
++            <p className={LABEL_CLASS}>Bank Transfer Details</p>
++            <div className="footer-bank grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
++              {BANK_FIELDS.map(({ field, label, placeholder }) => (
++                <div key={field} className="space-y-0.5">
++                  <p className="text-xs text-[var(--invoice-subtle)]">{label}</p>
++                  <EditableText
++                    value={state[field]}
++                    onCommit={(value) => update(field, value)}
++                    placeholder={placeholder}
++                    ariaLabel={label}
++                    className="footer-value text-sm font-medium text-[var(--invoice-ink)]"
++                  />
++                </div>
++              ))}
++            </div>
++          </div>
++        )}
++      </div>
++
++      <div className="footer-cta space-y-1.5 rounded-md border border-[var(--invoice-border)] px-5 py-4 text-center">
++        <EditableText
++          value={state.ctaTitle}
++          onCommit={(value) => update("ctaTitle", value)}
++          placeholder="Call to action heading"
++          ariaLabel="Call to action heading"
++          className="footer-value text-base font-semibold text-[var(--invoice-ink)]"
++        />
++        <EditableText
++          value={state.ctaMessage}
++          onCommit={(value) => update("ctaMessage", value)}
++          placeholder="Tell the client what to do next"
++          ariaLabel="Call to action message"
++          multiline
++          rows={2}
++          className="footer-value text-sm text-[var(--invoice-muted)]"
++        />
++      </div>
+     </section>
+   )
+ }
+diff --git a/apps/web/components/invoice/invoice-context.tsx b/apps/web/components/invoice/invoice-context.tsx
+index 172e959..28f282e 100644
+--- a/apps/web/components/invoice/invoice-context.tsx
++++ b/apps/web/components/invoice/invoice-context.tsx
+@@ -97,6 +97,11 @@ function invoiceReducer(state: InvoiceData, action: InvoiceAction): InvoiceData
+         bankName: state.bankName,
+         bankAccount: state.bankAccount,
+         bankIfsc: state.bankIfsc,
++        bankAccountName: state.bankAccountName,
++        bankAccountType: state.bankAccountType,
++        bankPhone: state.bankPhone,
++        ctaTitle: state.ctaTitle,
++        ctaMessage: state.ctaMessage,
+         reverseChargeLabel: state.reverseChargeLabel,
+       }
+     case "SET_ID":
+@@ -126,6 +131,9 @@ const BUSINESS_FIELDS = [
+   "bankName",
+   "bankAccount",
+   "bankIfsc",
++  "bankAccountName",
++  "bankAccountType",
++  "bankPhone",
+ ] as const satisfies readonly (keyof InvoiceData)[]
+ 
+ function withSavedBusiness(linked: InvoiceData, saved: InvoiceData | null): InvoiceData {
+diff --git a/apps/web/components/invoice/line-items-table.tsx b/apps/web/components/invoice/line-items-table.tsx
+index b6d706e..a49517f 100644
+--- a/apps/web/components/invoice/line-items-table.tsx
++++ b/apps/web/components/invoice/line-items-table.tsx
+@@ -29,8 +29,8 @@ export function LineItemsTable() {
+         <span>Description</span>
+         {showHSN && <span>HSN/SAC</span>}
+         <span className="text-right">Qty</span>
+-        <span className="text-right">Rate</span>
+-        <span className="text-right">Amount</span>
++        <span className="text-right">Rate ({state.currency})</span>
++        <span className="text-right">Amount ({state.currency})</span>
+       </div>
+       <div className="line-items-body space-y-3">
+         {state.lineItems.map((item) => {
+diff --git a/apps/web/components/invoice/totals-section.tsx b/apps/web/components/invoice/totals-section.tsx
+index 0795685..f220554 100644
+--- a/apps/web/components/invoice/totals-section.tsx
++++ b/apps/web/components/invoice/totals-section.tsx
+@@ -4,7 +4,7 @@ import * as React from "react"
+ 
+ import { EditableNumber } from "@/components/invoice/editable-number"
+ import { useInvoiceDispatch, useInvoiceState } from "@/components/invoice/invoice-context"
+-import { calculateTotals, formatCurrency } from "@billy/invoice-core"
++import { calculateTotals, formatCurrency, getCurrency, getCurrencyLabel } from "@billy/invoice-core"
+ 
+ export function TotalsSection() {
+   const state = useInvoiceState()
+@@ -100,11 +100,14 @@ export function TotalsSection() {
+           </span>
+         </div>
+         <div className="grand-total flex items-center justify-between border-t border-[var(--invoice-border)] pt-3 text-base font-semibold text-[var(--invoice-ink)]">
+-          <span>Total</span>
++          <span>Total ({state.currency})</span>
+           <span className="font-mono">
+             {formatCurrency(totals.total, state.currency)}
+           </span>
+         </div>
++        <p className="currency-note text-right text-xs text-[var(--invoice-subtle)]">
++          All amounts in {getCurrencyLabel(state.currency)} · {getCurrency(state.currency).name}
++        </p>
+       </div>
+     </section>
+   )
+diff --git a/packages/invoice-core/src/agent/input.ts b/packages/invoice-core/src/agent/input.ts
+index 0e87e54..4ab3cc7 100644
+--- a/packages/invoice-core/src/agent/input.ts
++++ b/packages/invoice-core/src/agent/input.ts
+@@ -142,6 +142,11 @@ export function toInvoiceData(input: ParsedInput, today: Date = new Date()): Inv
+     bankName: bank.name ?? "",
+     bankAccount: bank.account ?? "",
+     bankIfsc: bank.ifsc ?? "",
++    bankAccountName: "",
++    bankAccountType: "",
++    bankPhone: "",
++    ctaTitle: "",
++    ctaMessage: "",
+   }
+ 
+   data = applyProfessionPreset(data, input.preset ?? (input.gst ? "gst_vendor" : "freelancer"))
+diff --git a/packages/invoice-core/src/currencies.ts b/packages/invoice-core/src/currencies.ts
+index 2159d6f..1547fc4 100644
+--- a/packages/invoice-core/src/currencies.ts
++++ b/packages/invoice-core/src/currencies.ts
+@@ -29,3 +29,28 @@ export function getCurrencySymbol(code: string): string {
+ export function getCurrencyLocale(code: string): string {
+   return getCurrency(code).locale
+ }
++
++/**
++ * The sign `formatCurrency` actually prints for `code` (several currencies
++ * share "$"), so the invoice can say which one it is.
++ */
++export function getDisplayedSymbol(code: string): string {
++  try {
++    const part = new Intl.NumberFormat(getCurrencyLocale(code), {
++      style: "currency",
++      currency: code,
++    })
++      .formatToParts(0)
++      .find((p) => p.type === "currency")
++    if (part?.value) return part.value
++  } catch {
++    // fall through to the table symbol
++  }
++  return getCurrencySymbol(code)
++}
++
++/** e.g. "SGD ($)" or "INR (₹)": the code plus the sign shown on amounts. */
++export function getCurrencyLabel(code: string): string {
++  const sign = getDisplayedSymbol(code)
++  return sign === code ? code : `${code} (${sign})`
++}
+diff --git a/packages/invoice-core/src/defaults.ts b/packages/invoice-core/src/defaults.ts
+index 90df10e..135358e 100644
+--- a/packages/invoice-core/src/defaults.ts
++++ b/packages/invoice-core/src/defaults.ts
+@@ -55,10 +55,17 @@ export function createDefaultInvoice(today: Date = new Date()): InvoiceData {
+     templateId: "clean",
+     stampUrl: null,
+     notes: "Thank you for your business. Please reach out if you have any questions.",
+-    paymentTerms: "Payment due within 7 days via bank transfer or card.",
+-    bankName: "",
+-    bankAccount: "",
+-    bankIfsc: "",
++    paymentTerms:
++      "Payment is due within 7 days of the invoice date. Please pay by bank transfer (NEFT / IMPS / UPI) using the details below and quote the invoice number as the payment reference. Share the payment confirmation once the transfer is done.",
++    bankName: "State Bank Of India",
++    bankAccount: "36940374141",
++    bankIfsc: "SBIN0008339",
++    bankAccountName: "Mr. JAINAM VIRALKUMAR SHAH",
++    bankAccountType: "Savings Bank Account",
++    bankPhone: "9054084811",
++    ctaTitle: "Ready to pay?",
++    ctaMessage:
++      "Transfer the amount using the bank details above and send the confirmation on 9054084811. Thank you for your business!",
+     reverseChargeLabel: "Reverse charge applicable",
+     options: {
+       showGSTIN: false,
+@@ -68,7 +75,7 @@ export function createDefaultInvoice(today: Date = new Date()): InvoiceData {
+       showIGST: false,
+       showReverseCharge: false,
+       showPONumber: false,
+-      showBankDetails: false,
++      showBankDetails: true,
+       showDigitalStamp: false,
+     },
+   }
+@@ -107,6 +114,11 @@ export function createBlankInvoice(): InvoiceData {
+     bankName: "",
+     bankAccount: "",
+     bankIfsc: "",
++    bankAccountName: "",
++    bankAccountType: "",
++    bankPhone: "",
++    ctaTitle: "",
++    ctaMessage: "",
+     reverseChargeLabel: "Reverse charge applicable",
+     options: {
+       showGSTIN: false,
+diff --git a/packages/invoice-core/src/invoice.test.ts b/packages/invoice-core/src/invoice.test.ts
+index 056313e..07e7de0 100644
+--- a/packages/invoice-core/src/invoice.test.ts
++++ b/packages/invoice-core/src/invoice.test.ts
+@@ -11,7 +11,7 @@ const base: InvoiceData = {
+     { id: "b", description: "B", hsnCode: "", quantity: 1, rate: 4000 },
+   ],
+   taxRate: 18, taxLabel: "GST", discountRate: 0, currency: "INR", templateId: "clean", stampUrl: null,
+-  notes: "", paymentTerms: "", bankName: "", bankAccount: "", bankIfsc: "", reverseChargeLabel: "",
++  notes: "", paymentTerms: "", bankName: "", bankAccount: "", bankIfsc: "", bankAccountName: "", bankAccountType: "", bankPhone: "", ctaTitle: "", ctaMessage: "", reverseChargeLabel: "",
+   options: { showGSTIN: false, showHSNCode: false, showCGST: false, showSGST: false, showIGST: false, showReverseCharge: false, showPONumber: false, showBankDetails: false, showDigitalStamp: false },
+ }
+ 
+diff --git a/packages/invoice-core/src/normalize.ts b/packages/invoice-core/src/normalize.ts
+index 6fd3ae6..ddc3d51 100644
+--- a/packages/invoice-core/src/normalize.ts
++++ b/packages/invoice-core/src/normalize.ts
+@@ -23,6 +23,11 @@ const STRING_FIELDS = [
+   "bankName",
+   "bankAccount",
+   "bankIfsc",
++  "bankAccountName",
++  "bankAccountType",
++  "bankPhone",
++  "ctaTitle",
++  "ctaMessage",
+   "reverseChargeLabel",
+   "templateId",
+ ] as const satisfies readonly (keyof InvoiceData)[]
+diff --git a/packages/invoice-core/src/types.ts b/packages/invoice-core/src/types.ts
+index b1f7f22..b39c49e 100644
+--- a/packages/invoice-core/src/types.ts
++++ b/packages/invoice-core/src/types.ts
+@@ -45,6 +45,11 @@ export interface InvoiceData {
+   bankName: string
+   bankAccount: string
+   bankIfsc: string
++  bankAccountName: string
++  bankAccountType: string
++  bankPhone: string
++  ctaTitle: string
++  ctaMessage: string
+   reverseChargeLabel: string
+   templateId: string
+   stampUrl: string | null
